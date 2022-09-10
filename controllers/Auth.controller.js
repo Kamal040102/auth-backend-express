@@ -32,17 +32,20 @@ const register = async (req, res) => {
                     if (password === cpassword) {
                         const salt = await bcrypt.genSalt(10)
                         const hpassword = await bcrypt.hash(password, salt)
-
+                        
                         const newUser = new userModel({
                             name: name,
                             email: email,
                             password: hpassword
                         })
-
+                        
                         await newUser.save()
+
+                        const tempToken = jwt.sign({name, email}, process.env.JWT_SECRET_KEY, {expiresIn:"10m"})
+
                         res.status(200).json({
                             status: true,
-                            message: "User registered."
+                            message: "User registered. Verification link has been sent to your email id.",
                         })
 
                         await transporter.sendMail({
@@ -54,10 +57,12 @@ const register = async (req, res) => {
                                 <div style="border-bottom:1px solid #eee"><a href=""
                                         style="font-size:1.4em;color: #00466a;text-decoration:none;font-weight:600">Sharma Kamal</a></div>
                                 <p style="font-size:1.1em">Hi ${name},</p>
-                                <p>Thank you for choosing my services. You are succesfully registered.</p>
+                                <p>Thank you for choosing my services. To proceed further and experience the power of my services you need to just click the button below and verify your identity.<br>
+                                <b>P.S:</b>This verification button will expire in 10 minutes.
+                                </p>
                                 <h2
                                     style="background: #00466a;margin: 0 auto;width: max-content;padding: 0 10px;color: #fff;border-radius: 4px;cursor:pointer">
-                                    <a style="color:white;text-decoration:none" target="_blank" href=${process.env.CLIENT_URL}>See your Dashboard</a></h2>
+                                    <a style="color:white;text-decoration:none" target="_blank" href=${process.env.CLIENT_URL}/verify/${tempToken}>Verify Your Email</a></h2>
                                 <p style="font-size:0.9em;">Regards,<br />Sharma Kamal</p>
                                 <hr style="border:none;border-top:1px solid #eee" />
                                 <div style="float:right;padding:8px 0;color:#aaa;font-size:0.8em;line-height:1;font-weight:300">
@@ -79,6 +84,36 @@ const register = async (req, res) => {
         }
     }
     catch (err) {
+        res.status(500).json({
+            status: false,
+            message: err.message
+        })
+    }
+}
+
+const verifyEmail = async (req,res) => {
+    const { token } = req.params;
+
+    try{
+        const { name, email } = jwt.verify(token, process.env.JWT_SECRET_KEY)
+
+        const userExist = await userModel.findOne({name, email})
+        if(userExist){
+            await userModel.findOneAndUpdate({email, name}, {isVerified:true})
+
+            res.status(200).json({
+                status: true,
+                message: "Your account is verified."
+            })
+        }
+        else{
+            res.status(400).json({
+                status: false,
+                message: "Not able to verify this time. Please try again later."
+            })
+        }
+    }
+    catch(err){
         res.status(500).json({
             status: false,
             message: err.message
@@ -324,5 +359,6 @@ module.exports = {
     changePassword,
     getUserDetail,
     resetPassword,
-    changeResetPassword
+    changeResetPassword,
+    verifyEmail
 }
